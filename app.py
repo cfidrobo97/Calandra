@@ -36,6 +36,7 @@ def upload_to_github(excel_bytes: bytes, filename: str) -> str:
         st.error(f"❌ Error al guardar en GitHub: {e}")
         return ""
 
+
 st.set_page_config(page_title="Control - Calandra", layout="wide")
 st.title("🧾 Control (por día: Horas + Pedidos)")
 
