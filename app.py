@@ -17,7 +17,7 @@ def upload_excel_to_drive(excel_bytes: bytes, filename: str) -> str:
         service = build("drive", "v3", credentials=creds)
         folder_id = st.secrets["google"]["folder_id"]
 
-        file_metadata = {"name": filename, "parents": [folder_id]}
+        file_metadata = {"name": filename, "parents": [folder_id], "driveId": None}
 
         media = MediaIoBaseUpload(
             io.BytesIO(excel_bytes),
@@ -28,7 +28,8 @@ def upload_excel_to_drive(excel_bytes: bytes, filename: str) -> str:
         created = service.files().create(
             body=file_metadata,
             media_body=media,
-            fields="id, webViewLink"
+            fields="id, webViewLink",
+            supportsAllDrives=True
         ).execute()
 
         return created.get("webViewLink", "")
