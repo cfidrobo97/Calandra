@@ -48,7 +48,7 @@ def upload_excel_to_drive(excel_bytes: bytes, filename: str) -> str:
         return ""
 
 st.set_page_config(page_title="Control - Calandra", layout="wide")
-st.title("🧾 Control (por día: Horas + Pedidos)")
+st.title("🧾 Control  1 (por día: Horas + Pedidos)")
 
 # ---------------- Sidebar config ----------------
 st.sidebar.header("⚙️ Configuración")
