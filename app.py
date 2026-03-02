@@ -17,7 +17,11 @@ def upload_excel_to_drive(excel_bytes: bytes, filename: str) -> str:
         service = build("drive", "v3", credentials=creds)
         folder_id = st.secrets["google"]["folder_id"]
 
-        file_metadata = {"name": filename, "parents": [folder_id], "driveId": None}
+        # 1. Asegúrate de incluir supportsAllDrives si es una unidad compartida
+        file_metadata = {
+            "name": filename, 
+            "parents": [folder_id]
+        }
 
         media = MediaIoBaseUpload(
             io.BytesIO(excel_bytes),
@@ -25,16 +29,21 @@ def upload_excel_to_drive(excel_bytes: bytes, filename: str) -> str:
             resumable=False
         )
 
+        # 2. IMPORTANTE: Agregamos supportsAllDrives=True 
+        # y si esto falla, la alternativa es mover el archivo tras crearlo, 
+        # pero usualmente con permisos de "Editor" en la carpeta funciona.
         created = service.files().create(
             body=file_metadata,
             media_body=media,
             fields="id, webViewLink",
-            supportsAllDrives=True
+            supportsAllDrives=True  # Permite escribir en carpetas compartidas
         ).execute()
 
         return created.get("webViewLink", "")
 
     except Exception as e:
+        # Imprime el error completo en consola para debuggear mejor
+        print(f"Error detallado: {e}")
         st.error(f"❌ Error subiendo a Google Drive: {e}")
         return ""
 
