@@ -17,7 +17,6 @@ def upload_excel_to_drive(excel_bytes: bytes, filename: str) -> str:
         service = build("drive", "v3", credentials=creds)
         folder_id = st.secrets["google"]["folder_id"]
 
-        # 1. Asegúrate de incluir supportsAllDrives si es una unidad compartida
         file_metadata = {
             "name": filename, 
             "parents": [folder_id]
@@ -29,20 +28,39 @@ def upload_excel_to_drive(excel_bytes: bytes, filename: str) -> str:
             resumable=False
         )
 
-        # 2. IMPORTANTE: Agregamos supportsAllDrives=True 
-        # y si esto falla, la alternativa es mover el archivo tras crearlo, 
-        # pero usualmente con permisos de "Editor" en la carpeta funciona.
+        # 1. Crear el archivo (con supportsAllDrives para asegurar compatibilidad)
         created = service.files().create(
             body=file_metadata,
             media_body=media,
             fields="id, webViewLink",
-            supportsAllDrives=True  # Permite escribir en carpetas compartidas
+            supportsAllDrives=True
         ).execute()
+
+        file_id = created.get("id")
+
+        # 2. TRUCO PARA CUENTAS PERSONALES: 
+        # Intentamos que la cuenta de servicio "ceda" el archivo a tu correo personal
+        # para que use TU cuota de almacenamiento y no la de ella.
+        try:
+            user_permission = {
+                'type': 'user',
+                'role': 'owner',
+                'emailAddress': 'cristianidrobo97@gmail.com' # Tu correo aquí
+            }
+            # transferOwnership=True es clave aquí
+            service.permissions().create(
+                fileId=file_id,
+                body=user_permission,
+                transferOwnership=True,
+                supportsAllDrives=True
+            ).execute()
+        except Exception as e_perm:
+            # Si falla la transferencia de propiedad, al menos ya se intentó subir
+            print(f"Nota: No se pudo transferir propiedad: {e_perm}")
 
         return created.get("webViewLink", "")
 
     except Exception as e:
-        # Imprime el error completo en consola para debuggear mejor
         print(f"Error detallado: {e}")
         st.error(f"❌ Error subiendo a Google Drive: {e}")
         return ""
