@@ -3,6 +3,39 @@ import re
 from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+#subir a google
+
+def upload_excel_to_drive(excel_bytes: bytes, filename: str) -> str:
+    try:
+        creds_info = dict(st.secrets["google_service_account"])
+        scopes = ["https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+
+        service = build("drive", "v3", credentials=creds)
+        folder_id = st.secrets["google"]["folder_id"]
+
+        file_metadata = {"name": filename, "parents": [folder_id]}
+
+        media = MediaIoBaseUpload(
+            io.BytesIO(excel_bytes),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            resumable=False
+        )
+
+        created = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields="id, webViewLink"
+        ).execute()
+
+        return created.get("webViewLink", "")
+
+    except Exception as e:
+        st.error(f"❌ Error subiendo a Google Drive: {e}")
+        return ""
 
 st.set_page_config(page_title="Control - Calandra", layout="wide")
 st.title("🧾 Control (por día: Horas + Pedidos)")
@@ -438,6 +471,14 @@ with col_exp1:
 
 if generar:
     st.session_state.excel_bytes = build_excel_bytes()
+    filename = f"Control_{inicio.strftime('%Y-%m-%d')}_a_{fin.strftime('%Y-%m-%d')}.xlsx"
+
+    link = upload_excel_to_drive(st.session_state.excel_bytes, filename)
+
+    if link:
+        st.success("✅ Subido a Google Drive")
+        st.markdown(f"📁 Abrir archivo: {link}")
+
     st.success("✅ Excel generado. Ya puedes descargarlo.")
 
 with col_exp2:
