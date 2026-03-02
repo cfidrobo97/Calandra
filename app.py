@@ -37,7 +37,7 @@ def upload_to_github(excel_bytes: bytes, filename: str) -> str:
         return ""
 
 st.set_page_config(page_title="Control - Calandra", layout="wide")
-st.title("🧾 Control (por día: Horas + Pedidos)")
+st.title("🧾 Control git (por día: Horas + Pedidos)")
 
 # ---------------- Sidebar config ----------------
 st.sidebar.header("⚙️ Configuración")
