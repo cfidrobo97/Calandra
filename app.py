@@ -1,34 +1,33 @@
 import io
 import re
 from datetime import date, timedelta
+
 import pandas as pd
 import streamlit as st
 from github import Github
-#subir a google
 
+# ---------------- GitHub upload ----------------
 def upload_to_github(excel_bytes: bytes, filename: str) -> str:
     try:
         # 1. Obtener credenciales de los secrets
         token = st.secrets["github"]["token"]
         repo_name = st.secrets["github"]["repo"]
         branch = st.secrets["github"]["branch"]
-        
+
         g = Github(token)
         repo = g.get_repo(repo_name)
-        
-        # Ruta donde se guardará dentro del repositorio (ej: reportes/2024-02-15.xlsx)
+
+        # Ruta donde se guardará dentro del repositorio (ej: reportes/2026/marzo/archivo.xlsx)
         path = f"reportes/2026/marzo/{filename}"
-        
+
         # Intentar ver si el archivo ya existe para actualizarlo o crear uno nuevo
         try:
             contents = repo.get_contents(path, ref=branch)
             repo.update_file(contents.path, f"Actualizar {filename}", excel_bytes, contents.sha, branch=branch)
-            action = "actualizado"
-        except:
+        except Exception:
             repo.create_file(path, f"Crear {filename}", excel_bytes, branch=branch)
-            action = "creado"
 
-        # Generar link directo al archivo en el repo privado
+        # Generar link al archivo
         file_url = f"https://github.com/{repo_name}/blob/{branch}/{path}"
         return file_url
 
@@ -37,6 +36,7 @@ def upload_to_github(excel_bytes: bytes, filename: str) -> str:
         return ""
 
 
+# ---------------- Page config ----------------
 st.set_page_config(page_title="Control - Calandra", layout="wide")
 st.title("🧾 Control (por día: Horas + Pedidos)")
 
@@ -78,7 +78,7 @@ def normalize_time_str(x) -> str | None:
         return f"{int(x.hour):02d}:{int(x.minute):02d}"
 
     s = str(x).strip()
-    if s == "" or s.lower() == "none" or s.lower() == "nan":
+    if s == "" or s.lower() in ("none", "nan"):
         return None
 
     # ya viene HH:MM
@@ -111,12 +111,14 @@ def normalize_time_str(x) -> str | None:
 
     return None
 
+
 def to_minutes(x):
     s = normalize_time_str(x)
     if s is None:
         return None
     h, m = s.split(":")
     return int(h) * 60 + int(m)
+
 
 def calc_horas(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -153,9 +155,11 @@ def calc_horas(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 def calc_pedidos(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     totales = []
+
     for _, r in df.iterrows():
         metros = r.get("Total metros")
         rollo = r.get("Rollo")
@@ -174,15 +178,19 @@ def calc_pedidos(df: pd.DataFrame) -> pd.DataFrame:
                 totales.append(None)
             else:
                 totales.append(round(float(metros) * float(precio_esp), 2))
+
         elif rollo == "Grande" and metros is not None:
             totales.append(round(float(metros) * tarifa_grande, 2))
+
         elif rollo == "Pequeño" and metros is not None:
             totales.append(round(float(metros) * tarifa_pequeno, 2))
+
         else:
             totales.append(None)
 
     df["Total ($)"] = totales
     return df
+
 
 def default_horas_day():
     return pd.DataFrame([
@@ -191,6 +199,7 @@ def default_horas_day():
         {"Tipo": "Jose",    "Hora inicio": "", "Hora fin": "", "Total horas": None, "Total dinero": None, "Estado": ""},
         {"Tipo": "Klever",  "Hora inicio": "", "Hora fin": "", "Total horas": None, "Total dinero": None, "Estado": ""},
     ])
+
 
 def default_pedidos_day():
     return pd.DataFrame([{
@@ -202,6 +211,7 @@ def default_pedidos_day():
         "Estado": ""
     } for _ in range(6)])
 
+
 def date_range(start: date, end: date):
     days = []
     d = start
@@ -210,19 +220,21 @@ def date_range(start: date, end: date):
         d += timedelta(days=1)
     return days
 
+
 # ---------------- State: one dict per day ----------------
 if "days" not in st.session_state:
     st.session_state.days = {}
 
 dias = date_range(inicio, fin) if fin >= inicio else [inicio]
 
-# Inicializa días si no existen
+# Inicializa días si no existen (✅ incluye comentario)
 for d in dias:
     key = d.isoformat()
     if key not in st.session_state.days:
         st.session_state.days[key] = {
             "horas": calc_horas(default_horas_day()),
             "pedidos": calc_pedidos(default_pedidos_day()),
+            "comentario": "",  # ✅ FIX KeyError
         }
 
 # Selector de día
@@ -231,6 +243,9 @@ day_labels = [d.strftime("%a %d/%m/%Y") for d in dias]
 idx = st.sidebar.radio(" ", options=list(range(len(dias))), format_func=lambda i: day_labels[i])
 dia_sel = dias[idx]
 dia_key = dia_sel.isoformat()
+
+# ✅ Seguro extra para días viejos sin comentario
+st.session_state.days[dia_key].setdefault("comentario", "")
 
 st.subheader(f"📌 Día: {dia_sel.strftime('%d/%m/%Y')}")
 
@@ -274,8 +289,13 @@ with st.form(key=f"form_{dia_key}", clear_on_submit=False):
             },
             key=f"pedidos_editor_{dia_key}",
         )
-    # NUEVA CAJA DE COMENTARIOS
-    comentario_input = st.text_area("📝 Notas / Observaciones del día", value=st.session_state.days[dia_key]["comentario"], placeholder="Escribe aquí cualquier detalle importante...")
+
+    # ✅ NUEVA CAJA DE COMENTARIOS (ya no rompe)
+    comentario_input = st.text_area(
+        "📝 Notas / Observaciones del día",
+        value=st.session_state.days[dia_key]["comentario"],
+        placeholder="Escribe aquí cualquier detalle importante..."
+    )
 
     guardar = st.form_submit_button("💾 Guardar día")
 
@@ -290,17 +310,26 @@ st.divider()
 # ---------------- Aggregation (rango completo) ----------------
 all_horas = []
 all_pedidos = []
+all_notes = []  # ✅ FIX: antes no existía
 
 for d in dias:
     k = d.isoformat()
+
+    # ✅ Seguro por si quedó guardado sin comentario
+    st.session_state.days[k].setdefault("comentario", "")
+
     h = st.session_state.days[k]["horas"].copy()
     h.insert(0, "Fecha", d)
+
     p = st.session_state.days[k]["pedidos"].copy()
     p.insert(0, "Fecha", d)
+
     all_horas.append(h)
     all_pedidos.append(p)
-    if st.session_state.days[k]["comentario"]:
-        all_notes.append({"Fecha": d.strftime('%d/%m/%Y'), "Nota": st.session_state.days[k]["comentario"]})
+
+    note = st.session_state.days[k].get("comentario", "")
+    if note:
+        all_notes.append({"Fecha": d.strftime('%d/%m/%Y'), "Nota": note})
 
 horas_all = pd.concat(all_horas, ignore_index=True)
 pedidos_all = pd.concat(all_pedidos, ignore_index=True)
@@ -314,15 +343,18 @@ ventas_pendiente = pd.to_numeric(
     errors="coerce"
 ).fillna(0).sum()
 
+
 def pago_tipo_total(tipo: str) -> float:
     """Total histórico (pagado + pendiente + debe) del empleado."""
     s = horas_all.loc[horas_all["Tipo"] == tipo, "Total dinero"]
     return pd.to_numeric(s, errors="coerce").fillna(0).sum()
 
+
 def pago_tipo_pendiente(tipo: str) -> float:
     """Solo lo que aún se debe pagar al empleado (Estado != Pagado)."""
     s = horas_all.loc[(horas_all["Tipo"] == tipo) & (horas_all["Estado"] != "Pagado"), "Total dinero"]
     return pd.to_numeric(s, errors="coerce").fillna(0).sum()
+
 
 # Totales históricos por empleado
 p_bryan_total = pago_tipo_total("Bryan")
@@ -346,15 +378,16 @@ neto_total = ventas_total - p_total_hist
 st.subheader("📊 Totales (rango seleccionado)")
 
 t1, t2, t3, t4, t5, t6, t7, t8 = st.columns(8)
+
 t1.metric("Total metros", f"{metros_total:.2f}")
 t2.metric("Total ventas", f"${ventas_total:,.2f}")
 
-# 👇 Aquí mostramos SOLO lo pendiente por empleado (si ya está pagado, saldrá 0)
+# 👇 Solo lo pendiente por empleado
 t3.metric("Bryan (pendiente)", f"${p_bryan_pend:,.2f}")
 t4.metric("Jose (pendiente)", f"${p_jose_pend:,.2f}")
 t5.metric("Klever (pendiente)", f"${p_klever_pend:,.2f}")
 
-# 👇 Y aquí el total histórico (para tu reporte/registro general)
+# 👇 Total histórico
 t6.metric("Total empleados (histórico)", f"${p_total_hist:,.2f}")
 
 t7.metric("Pago pendiente (T - B)", f"${pago_pendiente_cliente:,.2f}")
@@ -373,19 +406,22 @@ st.subheader("📤 Exportar")
 st.caption("Exporta a Excel con 2 hojas (Horas + Pedidos) + Resumen del rango.")
 
 def rebuild_aggregates():
-    all_horas, all_pedidos = [], []
+    all_horas_local, all_pedidos_local = [], []
 
     for d in dias:
         k = d.isoformat()
+
         h = st.session_state.days[k]["horas"].copy()
         h.insert(0, "Fecha", d)
+
         p = st.session_state.days[k]["pedidos"].copy()
         p.insert(0, "Fecha", d)
-        all_horas.append(h)
-        all_pedidos.append(p)
 
-    horas_all_local = pd.concat(all_horas, ignore_index=True)
-    pedidos_all_local = pd.concat(all_pedidos, ignore_index=True)
+        all_horas_local.append(h)
+        all_pedidos_local.append(p)
+
+    horas_all_local = pd.concat(all_horas_local, ignore_index=True)
+    pedidos_all_local = pd.concat(all_pedidos_local, ignore_index=True)
 
     # Limpieza (opcional)
     horas_all_local = horas_all_local[
@@ -399,6 +435,7 @@ def rebuild_aggregates():
     ].copy()
 
     return horas_all_local, pedidos_all_local
+
 
 def build_excel_bytes() -> bytes:
     horas_all_export, pedidos_all_export = rebuild_aggregates()
@@ -416,7 +453,10 @@ def build_excel_bytes() -> bytes:
         return pd.to_numeric(s, errors="coerce").fillna(0).sum()
 
     def pago_pend_export(tipo: str) -> float:
-        s = horas_all_export.loc[(horas_all_export["Tipo"] == tipo) & (horas_all_export["Estado"] != "Pagado"), "Total dinero"]
+        s = horas_all_export.loc[
+            (horas_all_export["Tipo"] == tipo) & (horas_all_export["Estado"] != "Pagado"),
+            "Total dinero"
+        ]
         return pd.to_numeric(s, errors="coerce").fillna(0).sum()
 
     # Históricos
@@ -462,10 +502,13 @@ def build_excel_bytes() -> bytes:
             ]
         })
         resumen.to_excel(writer, index=False, sheet_name="RESUMEN")
+
+        # ✅ Agrega notas si existen
         if all_notes:
             pd.DataFrame(all_notes).to_excel(writer, index=False, sheet_name="NOTAS_DIARIAS")
 
     return output.getvalue()
+
 
 # ✅ Generar solo cuando el usuario lo pida (NO en cada rerun)
 if "excel_bytes" not in st.session_state:
