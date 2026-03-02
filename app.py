@@ -17,7 +17,7 @@ def upload_to_github(excel_bytes: bytes, filename: str) -> str:
         repo = g.get_repo(repo_name)
         
         # Ruta donde se guardará dentro del repositorio (ej: reportes/2024-02-15.xlsx)
-        path = f"reportes/2026/febrero/{filename}"
+        path = f"reportes/2026/marzo/{filename}"
         
         # Intentar ver si el archivo ya existe para actualizarlo o crear uno nuevo
         try:
@@ -263,10 +263,10 @@ with st.form(key=f"form_{dia_key}", clear_on_submit=False):
             num_rows="dynamic",
             column_config={
                 "Cliente": st.column_config.TextColumn(),
-                "Total metros": st.column_config.NumberColumn(format="%.2f"),
+                "Total metros": st.column_config.NumberColumn(format="%.2f", step=0.01, min_value=0.0),
                 "Rollo": st.column_config.SelectboxColumn(options=ROLLOS),
                 "Precio especial ($)": st.column_config.NumberColumn(
-                    format="$%.2f",
+                    format="$%.2f", step=0.01,
                     help="Si Rollo=Especial: este valor es $/metro (ej: 0.50)."
                 ),
                 "Total ($)": st.column_config.NumberColumn(disabled=True, format="$%.2f"),
@@ -274,12 +274,15 @@ with st.form(key=f"form_{dia_key}", clear_on_submit=False):
             },
             key=f"pedidos_editor_{dia_key}",
         )
+    # NUEVA CAJA DE COMENTARIOS
+    comentario_input = st.text_area("📝 Notas / Observaciones del día", value=st.session_state.days[dia_key]["comentario"], placeholder="Escribe aquí cualquier detalle importante...")
 
     guardar = st.form_submit_button("💾 Guardar día")
 
 if guardar:
     st.session_state.days[dia_key]["horas"] = calc_horas(horas_edit)
     st.session_state.days[dia_key]["pedidos"] = calc_pedidos(pedidos_edit)
+    st.session_state.days[dia_key]["comentario"] = comentario_input
     st.success("✅ Guardado.")
 
 st.divider()
@@ -296,6 +299,8 @@ for d in dias:
     p.insert(0, "Fecha", d)
     all_horas.append(h)
     all_pedidos.append(p)
+    if st.session_state.days[k]["comentario"]:
+        all_notes.append({"Fecha": d.strftime('%d/%m/%Y'), "Nota": st.session_state.days[k]["comentario"]})
 
 horas_all = pd.concat(all_horas, ignore_index=True)
 pedidos_all = pd.concat(all_pedidos, ignore_index=True)
@@ -457,6 +462,8 @@ def build_excel_bytes() -> bytes:
             ]
         })
         resumen.to_excel(writer, index=False, sheet_name="RESUMEN")
+        if all_notes:
+            pd.DataFrame(all_notes).to_excel(writer, index=False, sheet_name="NOTAS_DIARIAS")
 
     return output.getvalue()
 
