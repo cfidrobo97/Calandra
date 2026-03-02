@@ -3,70 +3,41 @@ import re
 from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
+from github import Github
 #subir a google
 
-def upload_excel_to_drive(excel_bytes: bytes, filename: str) -> str:
+def upload_to_github(excel_bytes: bytes, filename: str) -> str:
     try:
-        creds_info = dict(st.secrets["google_service_account"])
-        scopes = ["https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
-
-        service = build("drive", "v3", credentials=creds)
-        folder_id = st.secrets["google"]["folder_id"]
-
-        file_metadata = {
-            "name": filename, 
-            "parents": [folder_id]
-        }
-
-        media = MediaIoBaseUpload(
-            io.BytesIO(excel_bytes),
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            resumable=False
-        )
-
-        # 1. Crear el archivo (con supportsAllDrives para asegurar compatibilidad)
-        created = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields="id, webViewLink",
-            supportsAllDrives=True
-        ).execute()
-
-        file_id = created.get("id")
-
-        # 2. TRUCO PARA CUENTAS PERSONALES: 
-        # Intentamos que la cuenta de servicio "ceda" el archivo a tu correo personal
-        # para que use TU cuota de almacenamiento y no la de ella.
+        # 1. Obtener credenciales de los secrets
+        token = st.secrets["github"]["token"]
+        repo_name = st.secrets["github"]["repo"]
+        branch = st.secrets["github"]["branch"]
+        
+        g = Github(token)
+        repo = g.get_repo(repo_name)
+        
+        # Ruta donde se guardará dentro del repositorio (ej: reportes/2024-02-15.xlsx)
+        path = f"reportes/2026/febrero/{filename}"
+        
+        # Intentar ver si el archivo ya existe para actualizarlo o crear uno nuevo
         try:
-            user_permission = {
-                'type': 'user',
-                'role': 'owner',
-                'emailAddress': 'cristianidrobo97@gmail.com' # Tu correo aquí
-            }
-            # transferOwnership=True es clave aquí
-            service.permissions().create(
-                fileId=file_id,
-                body=user_permission,
-                transferOwnership=True,
-                supportsAllDrives=True
-            ).execute()
-        except Exception as e_perm:
-            # Si falla la transferencia de propiedad, al menos ya se intentó subir
-            print(f"Nota: No se pudo transferir propiedad: {e_perm}")
+            contents = repo.get_contents(path, ref=branch)
+            repo.update_file(contents.path, f"Actualizar {filename}", excel_bytes, contents.sha, branch=branch)
+            action = "actualizado"
+        except:
+            repo.create_file(path, f"Crear {filename}", excel_bytes, branch=branch)
+            action = "creado"
 
-        return created.get("webViewLink", "")
+        # Generar link directo al archivo en el repo privado
+        file_url = f"https://github.com/{repo_name}/blob/{branch}/{path}"
+        return file_url
 
     except Exception as e:
-        print(f"Error detallado: {e}")
-        st.error(f"❌ Error subiendo a Google Drive: {e}")
+        st.error(f"❌ Error al guardar en GitHub: {e}")
         return ""
 
 st.set_page_config(page_title="Control - Calandra", layout="wide")
-st.title("🧾 Control  2 (por día: Horas + Pedidos)")
+st.title("🧾 Control (por día: Horas + Pedidos)")
 
 # ---------------- Sidebar config ----------------
 st.sidebar.header("⚙️ Configuración")
@@ -501,10 +472,10 @@ if generar:
     st.session_state.excel_bytes = build_excel_bytes()
     filename = f"Control_{inicio.strftime('%Y-%m-%d')}_a_{fin.strftime('%Y-%m-%d')}.xlsx"
 
-    link = upload_excel_to_drive(st.session_state.excel_bytes, filename)
+    link = upload_to_github(st.session_state.excel_bytes, filename)
 
     if link:
-        st.success("✅ Subido a Google Drive")
+        st.success("✅ Subido a GitHub")
         st.markdown(f"📁 Abrir archivo: {link}")
 
     st.success("✅ Excel generado. Ya puedes descargarlo.")
