@@ -17,8 +17,8 @@ def upload_to_github(excel_bytes: bytes, filename: str) -> str:
         g = Github(token)
         repo = g.get_repo(repo_name)
 
-        # Ruta donde se guardará dentro del repositorio (ej: reportes/2026/marzo/archivo.xlsx)
-        path = f"reportes/2026/marzo/{filename}"
+        # Ruta donde se guardará dentro del repositorio (ej: reportes/2026/abril/archivo.xlsx)
+        path = f"reportes/2026/abril/{filename}"
 
         # Intentar ver si el archivo ya existe para actualizarlo o crear uno nuevo
         try:
