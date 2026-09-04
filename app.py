@@ -6,8 +6,14 @@ import pandas as pd
 import streamlit as st
 from github import Github
 
+MESES_ES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+]
+
+
 # ---------------- GitHub upload ----------------
-def upload_to_github(excel_bytes: bytes, filename: str) -> str:
+def upload_to_github(excel_bytes: bytes, filename: str, anio: int, mes: str) -> str:
     try:
         # 1. Obtener credenciales de los secrets
         token = st.secrets["github"]["token"]
@@ -18,7 +24,7 @@ def upload_to_github(excel_bytes: bytes, filename: str) -> str:
         repo = g.get_repo(repo_name)
 
         # Ruta donde se guardará dentro del repositorio (ej: reportes/2026/agosto/archivo.xlsx)
-        path = f"reportes/2026/agosto/{filename}"
+        path = f"reportes/{anio}/{mes}/{filename}"
 
         # Intentar ver si el archivo ya existe para actualizarlo o crear uno nuevo
         try:
@@ -51,6 +57,10 @@ inicio = st.sidebar.date_input("Desde", value=date.today())
 fin = st.sidebar.date_input("Hasta", value=date.today())
 if fin < inicio:
     st.sidebar.error("⚠️ 'Hasta' no puede ser menor que 'Desde'.")
+
+st.sidebar.subheader("📁 Carpeta en GitHub")
+anio_sel = st.sidebar.number_input("Año", min_value=2000, max_value=2100, value=date.today().year, step=1)
+mes_sel = st.sidebar.selectbox("Mes", options=MESES_ES, index=date.today().month - 1)
 
 # ---------------- Lists ----------------
 TIPOS = ["Calandra", "Bryan", "Jose", "Klever"]
@@ -523,7 +533,7 @@ if generar:
     st.session_state.excel_bytes = build_excel_bytes()
     filename = f"Control_{inicio.strftime('%Y-%m-%d')}_a_{fin.strftime('%Y-%m-%d')}.xlsx"
 
-    link = upload_to_github(st.session_state.excel_bytes, filename)
+    link = upload_to_github(st.session_state.excel_bytes, filename, anio_sel, mes_sel)
 
     if link:
         st.success("✅ Subido a GitHub")
